@@ -12,7 +12,7 @@
 ## Quick redeploy & access (TL;DR)
 
 ```bash
-cd /Users/I752559/DHBW/semester-5/projekt/Windows-App/terraform
+cd Windows-App/terraform
 
 # 1. Deploy
 terraform apply -var='users={"test":[{"email":"test@dhbw.de"}]}'
