@@ -58,6 +58,16 @@ locals {
   usernames = [for user in local.all_users : user.username]
   emails    = [for user in local.all_users : user.email]
   user_ids  = [for user in local.all_users : user.id]
+
+  # IPv6-Adresse aus dem explizit angelegten Port lesen.
+  # Wir filtern nach dem IPv6-Subnetz damit die Reihenfolge keine Rolle spielt.
+  fixed_ip_v6 = try([
+    for fa in openstack_networking_port_v2.vm_port.all_fixed_ips :
+    fa if can(regex(":", fa))
+  ][0], "")
+
+  # IPv6-Gateway des DHBWV6-Subnetzes (fest; aendert sich nicht)
+  ipv6_gateway = "2001:7c0:1b20:c913::1"
 }
 
 # Ein Passwort pro User. override_special ist auf Zeichen beschraenkt, die in
@@ -117,6 +127,17 @@ resource "openstack_networking_secgroup_rule_v2" "rdp_v6" {
 }
 
 # -----------------------------------------------------------------------------
+# Netzwerk-Port explizit anlegen — so kennen wir die IPv6-Adresse VOR dem
+# VM-Start und koennen sie in user_data (cloudbase-init) einbetten.
+# -----------------------------------------------------------------------------
+resource "openstack_networking_port_v2" "vm_port" {
+  name               = "${local.app_name}-port"
+  network_id         = var.network_uuid
+  security_group_ids = [openstack_networking_secgroup_v2.rdp.id]
+  admin_state_up     = true
+}
+
+# -----------------------------------------------------------------------------
 # Shared Windows VM
 # -----------------------------------------------------------------------------
 resource "openstack_compute_instance_v2" "shared_vm" {
@@ -133,14 +154,16 @@ resource "openstack_compute_instance_v2" "shared_vm" {
   }
 
   network {
-    uuid = var.network_uuid
+    port = openstack_networking_port_v2.vm_port.id
   }
 
   # Cloudbase-init fuehrt den PowerShell-Block beim ersten Boot aus:
   # legt lokale Benutzer an und aktiviert RDP.
   user_data = templatefile("${path.module}/cloudbase-init.txt.tpl", {
-    all_users = local.all_users
-    passwords = [for p in random_password.user_passwords : p.result]
+    all_users    = local.all_users
+    passwords    = [for p in random_password.user_passwords : p.result]
+    ipv6_address = local.fixed_ip_v6
+    ipv6_gateway = local.ipv6_gateway
   })
 
   metadata = merge(local.metadata, {

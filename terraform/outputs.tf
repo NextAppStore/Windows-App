@@ -44,10 +44,10 @@ output "team_vms" {
       instance_id   = openstack_compute_instance_v2.shared_vm.id
       instance_name = openstack_compute_instance_v2.shared_vm.name
       fixed_ip      = openstack_compute_instance_v2.shared_vm.network[0].fixed_ip_v4
-      fixed_ip_v6   = openstack_compute_instance_v2.shared_vm.network[0].fixed_ip_v6
+      fixed_ip_v6   = local.fixed_ip_v6
       floating_ip   = local.enable_floating_ip ? openstack_networking_floatingip_v2.fip[0].address : null
       rdp_target    = "${local.enable_floating_ip ? openstack_networking_floatingip_v2.fip[0].address : openstack_compute_instance_v2.shared_vm.network[0].fixed_ip_v4}:3389"
-      rdp_target_v6 = "[${openstack_compute_instance_v2.shared_vm.network[0].fixed_ip_v6}]:3389"
+      rdp_target_v6 = "[${local.fixed_ip_v6}]:3389"
       users = [for i in range(length(local.all_users)) : {
         username    = local.usernames[i]
         team        = local.all_users[i].team
