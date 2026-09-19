@@ -95,37 +95,6 @@ data "openstack_networking_network_v2" "external" {
   name  = var.floating_ip_pool
 }
 
-############################
-# SECURITY GROUP (RDP)
-############################
-
-# Eigene Security Group, damit die App unabhaengig von bestehenden Gruppen
-# funktioniert. Oeffnet eingehend RDP (3389) fuer IPv4 und IPv6.
-resource "openstack_networking_secgroup_v2" "rdp" {
-  name        = "${local.app_name}-secgroup"
-  description = "Allow inbound RDP (3389) for the Windows app"
-}
-
-resource "openstack_networking_secgroup_rule_v2" "rdp_v4" {
-  direction         = "ingress"
-  ethertype         = "IPv4"
-  protocol          = "tcp"
-  port_range_min    = 3389
-  port_range_max    = 3389
-  remote_ip_prefix  = "0.0.0.0/0"
-  security_group_id = openstack_networking_secgroup_v2.rdp.id
-}
-
-resource "openstack_networking_secgroup_rule_v2" "rdp_v6" {
-  direction         = "ingress"
-  ethertype         = "IPv6"
-  protocol          = "tcp"
-  port_range_min    = 3389
-  port_range_max    = 3389
-  remote_ip_prefix  = "::/0"
-  security_group_id = openstack_networking_secgroup_v2.rdp.id
-}
-
 # -----------------------------------------------------------------------------
 # Netzwerk-Port explizit anlegen — so kennen wir die IPv6-Adresse VOR dem
 # VM-Start und koennen sie in user_data (cloudbase-init) einbetten.
@@ -133,7 +102,7 @@ resource "openstack_networking_secgroup_rule_v2" "rdp_v6" {
 resource "openstack_networking_port_v2" "vm_port" {
   name               = "${local.app_name}-port"
   network_id         = var.network_uuid
-  security_group_ids = [openstack_networking_secgroup_v2.rdp.id]
+  security_group_ids = [var.shared_secgroup_id]
   admin_state_up     = true
 }
 
@@ -146,11 +115,11 @@ resource "openstack_compute_instance_v2" "shared_vm" {
   flavor_name = var.flavor_name
   key_pair    = null
 
-  # Security Group wird bereits ueber vm_port.security_group_ids gesetzt.
-  # `security_groups` hier zusaetzlich per Name zu setzen ist redundant und
-  # bricht sobald mehr als eine Gruppe mit diesem Namen im Projekt existiert
-  # (Nova loest den Namen projektweit auf -> 409 "Multiple security_group
-  # matches found").
+  # Security Group wird bereits ueber vm_port.security_group_ids gesetzt
+  # (var.shared_secgroup_id, vom Deployer im Wizard ausgewaehlt). Kein
+  # zusaetzliches `security_groups` hier — das waere eine Namens-Referenz,
+  # die bei mehreren gleichnamigen Gruppen im Projekt mit einem 409
+  # "Multiple security_group matches found" bricht.
 
   timeouts {
     create = "15m"
