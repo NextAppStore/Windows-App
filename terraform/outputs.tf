@@ -6,6 +6,7 @@
 # Schema user_accounts:
 # "<team>-<username>": {
 #   type     = "password"   # password | ssh_key | oauth | none
+#   authtype = "rdp"        # RDP-only Account, kein SSH vorhanden
 #   ip       = "1.2.3.4"
 #   port     = 3389
 #   username = "erik"
@@ -20,6 +21,7 @@ output "user_accounts" {
   value = length(local.all_users) > 0 ? {
     for i in range(length(local.all_users)) : local.user_ids[i] => {
       type     = "password"
+      authtype = "rdp"
       ip       = local.enable_floating_ip ? openstack_networking_floatingip_v2.fip[0].address : openstack_compute_instance_v2.shared_vm.network[0].fixed_ip_v4
       port     = 3389
       username = local.usernames[i]

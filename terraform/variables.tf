@@ -42,3 +42,9 @@ variable "floating_ip_pool" {
   type        = string
   default     = "DHBW"
 }
+
+variable "shared_secgroup_id" {
+  description = "ID einer Security Group mit RDP-Freigabe (Port 3389, IPv4 + IPv6) @openstack:security_group:id"
+  type        = string
+  default     = "2b37d6a2-dd64-4ce1-9f4a-c6cc92e0d8ef"
+}

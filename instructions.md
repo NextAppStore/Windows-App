@@ -38,7 +38,7 @@ account with a randomly generated password and can connect via **RDP (port 3389)
 
 - No Packer build — uses the existing Glance image `Windows 11 25H2 (UEFI)` directly
 - One shared VM for all users (all teams land on the same machine)
-- App creates its own security group that opens TCP 3389 inbound (IPv4 + IPv6)
+- Deployer selects an existing security group with TCP 3389 inbound (IPv4 + IPv6) via `shared_secgroup_id` — the app does not create its own
 - cloudbase-init runs on first boot to create user accounts, enable RDP, and set IPv6
 - VM gets both an IPv4 (`10.200.x.x`) and IPv6 (`2001:7c0:...`) address
 
@@ -79,13 +79,12 @@ terraform apply -var='users={"test":[{"email":"test@dhbw.de"}]}'
 
 The dummy email only derives the username (`test@dhbw.de` → username `test`).
 
-Plan shows **6 resources to create**:
+Plan shows **3 resources to create**:
 - `random_password.user_passwords[0]`
-- `openstack_networking_secgroup_v2.rdp`
-- `openstack_networking_secgroup_rule_v2.rdp_v4`
-- `openstack_networking_secgroup_rule_v2.rdp_v6`
 - `openstack_networking_port_v2.vm_port`
 - `openstack_compute_instance_v2.shared_vm`
+
+Pass an existing security group's ID via `-var='shared_secgroup_id=<uuid>'` (must allow inbound TCP 3389).
 
 ### Get credentials (no email needed)
 
@@ -202,7 +201,7 @@ This is reliable and does not depend on DHCPv6.
 | `terraform plan` fails on `data.openstack_images_image_v2.image` | Image name mismatch | Run `openstack image list` and correct `image_name` default in `variables.tf` |
 | RDP error `0x204` (Unable to connect) | cloudbase-init still running | Wait 5 min after apply; check log (see below) |
 | Login fails (wrong password) | cloudbase-init hasn't finished | Wait and retry; check log |
-| Security group `windows-rdp-secgroup` already exists | Previous partial deploy left it behind | Run `terraform destroy` or: `openstack security group delete windows-rdp-secgroup` |
+| RDP times out / connection refused | `shared_secgroup_id` points at a group without a TCP 3389 inbound rule | Check `openstack security group rule list <secgroup_id>`; add/fix the rule or pass the correct group's ID |
 | RDP error `0x2407` (no permission) | User not in Remote Desktop Users group | See below |
 | IPv6 address not set | cloudbase-init log shows "Kein passender Netzwerkadapter" | Check log; set manually via console |
 

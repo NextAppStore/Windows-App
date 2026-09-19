@@ -31,7 +31,7 @@ Windows-Desktop.
 
 ## VM-Zugang
 
-- **RDP-Port 3389** wird nach außen geöffnet (eigene Security Group, IPv4 + IPv6)
+- **RDP-Port 3389** wird nach außen geöffnet (über eine vom Deployer gewählte Security Group mit RDP-Regel, IPv4 + IPv6)
 - Zugriff primär per **IPv6** — funktioniert von überall ohne VPN
 - Login z. B. per Microsoft Remote Desktop (macOS) oder `mstsc` (Windows)
 - Zugangsdaten (Benutzername, Passwort, IP:Port) werden nach dem Deployment
@@ -47,7 +47,7 @@ Windows-Desktop.
 | Image | `Windows 11 25H2 (UEFI)` (bestehendes Glance-Image) |
 | Flavor | `win11.medium` (8 GB RAM, 2 vCPU, 80 GB) |
 | Floating IP | Nein (feste Adresse ist öffentlich geroutet) |
-| Security Group | wird von der App erstellt (RDP 3389 eingehend) |
+| Security Group | vom Deployer im Wizard gewählt (muss RDP 3389 eingehend erlauben) |
 
 ## Konfigurierbare Variablen
 
@@ -56,6 +56,7 @@ Windows-Desktop.
 | `flavor_name` | Flavor der Windows-VM | Ja |
 | `network_uuid` | UUID des internen Netzwerks | Ja |
 | `floating_ip_pool` | Name des External Networks für Floating IPs | Nein |
+| `shared_secgroup_id` | ID einer Security Group mit RDP-Freigabe (Port 3389, IPv4 + IPv6) | Ja |
 
 ## Deployment-Dauer
 
