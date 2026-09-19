@@ -146,7 +146,11 @@ resource "openstack_compute_instance_v2" "shared_vm" {
   flavor_name = var.flavor_name
   key_pair    = null
 
-  security_groups = [openstack_networking_secgroup_v2.rdp.name]
+  # Security Group wird bereits ueber vm_port.security_group_ids gesetzt.
+  # `security_groups` hier zusaetzlich per Name zu setzen ist redundant und
+  # bricht sobald mehr als eine Gruppe mit diesem Namen im Projekt existiert
+  # (Nova loest den Namen projektweit auf -> 409 "Multiple security_group
+  # matches found").
 
   timeouts {
     create = "15m"
