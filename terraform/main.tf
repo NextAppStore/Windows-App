@@ -102,7 +102,7 @@ data "openstack_networking_network_v2" "external" {
 # Eigene Security Group, damit die App unabhaengig von bestehenden Gruppen
 # funktioniert. Oeffnet eingehend RDP (3389) fuer IPv4 und IPv6.
 resource "openstack_networking_secgroup_v2" "rdp" {
-  name        = "${local.app_name}-rdp"
+  name        = "${local.app_name}-secgroup"
   description = "Allow inbound RDP (3389) for the Windows app"
 }
 
@@ -146,7 +146,11 @@ resource "openstack_compute_instance_v2" "shared_vm" {
   flavor_name = var.flavor_name
   key_pair    = null
 
-  security_groups = [openstack_networking_secgroup_v2.rdp.name]
+  # Security Group wird bereits ueber vm_port.security_group_ids gesetzt.
+  # `security_groups` hier zusaetzlich per Name zu setzen ist redundant und
+  # bricht sobald mehr als eine Gruppe mit diesem Namen im Projekt existiert
+  # (Nova loest den Namen projektweit auf -> 409 "Multiple security_group
+  # matches found").
 
   timeouts {
     create = "15m"
