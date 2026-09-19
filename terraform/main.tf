@@ -102,7 +102,7 @@ data "openstack_networking_network_v2" "external" {
 # Eigene Security Group, damit die App unabhaengig von bestehenden Gruppen
 # funktioniert. Oeffnet eingehend RDP (3389) fuer IPv4 und IPv6.
 resource "openstack_networking_secgroup_v2" "rdp" {
-  name        = "${local.app_name}-rdp"
+  name        = "${local.app_name}-secgroup"
   description = "Allow inbound RDP (3389) for the Windows app"
 }
 

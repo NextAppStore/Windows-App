@@ -202,7 +202,7 @@ This is reliable and does not depend on DHCPv6.
 | `terraform plan` fails on `data.openstack_images_image_v2.image` | Image name mismatch | Run `openstack image list` and correct `image_name` default in `variables.tf` |
 | RDP error `0x204` (Unable to connect) | cloudbase-init still running | Wait 5 min after apply; check log (see below) |
 | Login fails (wrong password) | cloudbase-init hasn't finished | Wait and retry; check log |
-| Security group `windows-rdp-rdp` already exists | Previous partial deploy left it behind | Run `terraform destroy` or: `openstack security group delete windows-rdp-rdp` |
+| Security group `windows-rdp-secgroup` already exists | Previous partial deploy left it behind | Run `terraform destroy` or: `openstack security group delete windows-rdp-secgroup` |
 | RDP error `0x2407` (no permission) | User not in Remote Desktop Users group | See below |
 | IPv6 address not set | cloudbase-init log shows "Kein passender Netzwerkadapter" | Check log; set manually via console |
 
