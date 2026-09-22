@@ -1,6 +1,6 @@
 #ps1_sysnative
-# Cloudbase-init fuehrt diesen PowerShell-Block beim ersten Boot aus.
-# Ziel: lokale Windows-Benutzer anlegen und RDP aktivieren + IPv6 binden.
+# Cloudbase-init runs this PowerShell block on first boot.
+# Goal: create local Windows users and enable RDP + bind IPv6.
 
 $ErrorActionPreference = "Stop"
 $log = "C:\cloudbase-init-app.log"
@@ -8,7 +8,7 @@ function Log($m) { Add-Content -Path $log -Value "$(Get-Date -Format o)  $m" }
 
 Log "Starte App-Setup: Benutzer anlegen + RDP aktivieren + IPv6 binden"
 
-# --- Lokale Benutzer anlegen ---------------------------------------------
+# --- Create local users ---------------------------------------------------
 %{ for idx, user in all_users ~}
 try {
     $pw = ConvertTo-SecureString '${passwords[idx]}' -AsPlainText -Force
@@ -20,7 +20,7 @@ try {
         Log "Benutzer '${user.username}' angelegt"
     }
     Enable-LocalUser -Name '${user.username}' -ErrorAction SilentlyContinue
-    # Passwort NICHT beim naechsten Logon erzwingen (blockiert sonst RDP)
+    # Do NOT force a password change at next logon (would otherwise block RDP)
     $adsi = [ADSI]"WinNT://./${user.username},user"
     $adsi.PasswordExpired = 0
     $adsi.SetInfo()
@@ -32,17 +32,17 @@ try {
 }
 %{ endfor ~}
 
-# --- RDP aktivieren ------------------------------------------------------
+# --- Enable RDP -----------------------------------------------------------
 try {
     Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name 'fDenyTSConnections' -Value 0
     Log "fDenyTSConnections = 0 gesetzt (RDP erlaubt)"
 
-    # Sprachunabhaengige RDP-Gruppe (Group-Token statt DisplayGroup — funktioniert
-    # auf deutsch und englisch; DisplayGroup 'Remote Desktop' wuerde DE nicht treffen)
+    # Language-independent RDP group (group token instead of DisplayGroup — works
+    # in German and English; DisplayGroup 'Remote Desktop' would not match DE)
     Enable-NetFirewallRule -Group '@FirewallAPI.dll,-28752' -ErrorAction SilentlyContinue
     Log "Firewall-Gruppe @FirewallAPI.dll,-28752 (RDP) aktiviert"
 
-    # Explizite Absicherung: TCP+UDP 3389 auf allen Profilen
+    # Explicit safeguard: TCP+UDP 3389 on all profiles
     foreach ($proto in @('TCP', 'UDP')) {
         $rn = "AppStore-RDP-In-$proto"
         if (-not (Get-NetFirewallRule -Name $rn -ErrorAction SilentlyContinue)) {
@@ -53,7 +53,7 @@ try {
         }
     }
 
-    # RDP-Dienst starten/aktivieren
+    # Start/enable the RDP service
     Set-Service -Name TermService -StartupType Automatic
     Start-Service -Name TermService -ErrorAction SilentlyContinue
     Log "TermService aktiviert und gestartet"
@@ -61,33 +61,33 @@ try {
     Log "FEHLER bei RDP-Aktivierung: $_"
 }
 
-# --- IPv6 statisch setzen (DHCPv6-stateful beantwortet der DHBW-Server nicht) ---
-# Die Adresse wird von Neutron/Terraform bekannt gegeben und hier statisch
-# auf den Adapter geschrieben. Das ist zuverlaessiger als DHCPv6 auf Windows.
+# --- Set IPv6 statically (DHCPv6-stateful is not answered by the DHBW server) ---
+# The address is provided by Neutron/Terraform and written statically to the
+# adapter here. This is more reliable than DHCPv6 on Windows.
 try {
-    $ipv6addr  = '${ipv6_address}'   # z.B. 2001:7c0:1b20:c913:1::2e3
-    $ipv6gw    = '${ipv6_gateway}'   # z.B. 2001:7c0:1b20:c913::1
+    $ipv6addr  = '${ipv6_address}'   # e.g. 2001:7c0:1b20:c913:1::2e3
+    $ipv6gw    = '${ipv6_gateway}'   # e.g. 2001:7c0:1b20:c913::1
     $ipv6prefix = 64
 
-    # Adapter finden (TAP/VirtIO — nicht -Physical filtern)
+    # Find the adapter (TAP/VirtIO — don't filter by -Physical)
     $adapter = Get-NetAdapter -ErrorAction SilentlyContinue |
         Where-Object { $_.Status -eq 'Up' -and $_.Name -notlike 'Loopback*' } |
         Select-Object -First 1
 
     if ($adapter) {
-        # IPv6-Protokollbindung sicherstellen
+        # Ensure the IPv6 protocol binding is enabled
         Enable-NetAdapterBinding -Name $adapter.Name -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue
 
-        # Eventuell vorhandene alte Adresse entfernen (idempotent)
+        # Remove any existing old address (idempotent)
         Remove-NetIPAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv6 `
             -IPAddress $ipv6addr -ErrorAction SilentlyContinue
 
-        # Statische IPv6-Adresse setzen
+        # Set the static IPv6 address
         New-NetIPAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv6 `
             -IPAddress $ipv6addr -PrefixLength $ipv6prefix -ErrorAction Stop
         Log "IPv6-Adresse statisch gesetzt: $ipv6addr/$ipv6prefix auf $($adapter.Name)"
 
-        # Default-Route setzen
+        # Set the default route
         Remove-NetRoute -InterfaceIndex $adapter.ifIndex -AddressFamily IPv6 `
             -DestinationPrefix '::/0' -ErrorAction SilentlyContinue
         New-NetRoute -InterfaceIndex $adapter.ifIndex -AddressFamily IPv6 `
@@ -97,7 +97,7 @@ try {
         Log "WARNUNG: Kein passender Netzwerkadapter gefunden"
     }
 
-    # Status-Dump zur Verifikation
+    # Status dump for verification
     $all6 = Get-NetIPAddress -AddressFamily IPv6 -ErrorAction SilentlyContinue |
         Select-Object InterfaceAlias, IPAddress, PrefixOrigin, SuffixOrigin, AddressState
     Log ("Get-NetIPAddress IPv6:`n" + ($all6 | Format-Table -AutoSize | Out-String))

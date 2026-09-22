@@ -15,18 +15,18 @@ terraform {
 
 provider "openstack" {
   cloud = "openstack"
-  # Auth via OS_CLOUD + clouds.yaml (oder OS_* env vars)
+  # Auth via OS_CLOUD + clouds.yaml (or OS_* env vars)
 }
 
 ############################
-# APP-DEFAULTS (vom App-Entwickler vorgegeben)
+# APP DEFAULTS (set by the app developer)
 ############################
 
 locals {
   app_name = "windows-rdp"
 
-  # Adressen in DHBWv4 sind oeffentlich geroutet, die feste Adresse der
-  # Instanz ist also fuer sich erreichbar. Kein Floating IP noetig.
+  # Addresses in DHBWv4 are publicly routed, so the instance's fixed address
+  # is reachable on its own. No floating IP needed.
   enable_floating_ip = false
 
   metadata = {}
@@ -36,7 +36,7 @@ locals {
 # USER MANAGEMENT (CONTRACT)
 ############################
 
-# Flatten users from teams — EXAKT wie im Contract vorgegeben.
+# Flatten users from teams — EXACTLY as specified by the contract.
 locals {
   all_users = flatten([
     for team, members in var.users : [
@@ -44,7 +44,7 @@ locals {
         id    = "${team}-${replace(split("@", member.email)[0], ".", "-")}"
         team  = team
         email = member.email
-        # Windows-Benutzername: keine Punkte (Windows-freundlich)
+        # Windows username: no dots (Windows-friendly)
         username = replace(split("@", member.email)[0], ".", "")
       }
     ]
@@ -52,26 +52,26 @@ locals {
 
   unique_teams = distinct([for user in local.all_users : user.team])
 
-  # Eine gemeinsame VM fuer alle Nutzer
+  # One shared VM for all users
   vm_count = 1
 
   usernames = [for user in local.all_users : user.username]
   emails    = [for user in local.all_users : user.email]
   user_ids  = [for user in local.all_users : user.id]
 
-  # IPv6-Adresse aus dem explizit angelegten Port lesen.
-  # Wir filtern nach dem IPv6-Subnetz damit die Reihenfolge keine Rolle spielt.
+  # Read the IPv6 address from the explicitly created port.
+  # We filter by the IPv6 subnet so ordering doesn't matter.
   fixed_ip_v6 = try([
     for fa in openstack_networking_port_v2.vm_port.all_fixed_ips :
     fa if can(regex(":", fa))
   ][0], "")
 
-  # IPv6-Gateway des DHBWV6-Subnetzes (fest; aendert sich nicht)
+  # IPv6 gateway of the DHBWV6 subnet (fixed; does not change)
   ipv6_gateway = "2001:7c0:1b20:c913::1"
 }
 
-# Ein Passwort pro User. override_special ist auf Zeichen beschraenkt, die in
-# PowerShell-Interpolation und RDP unproblematisch sind (kein $, `, ", ').
+# One password per user. override_special is restricted to characters that
+# are safe in PowerShell interpolation and RDP (no $, `, ", ').
 resource "random_password" "user_passwords" {
   count            = length(local.all_users)
   length           = 16
@@ -83,21 +83,21 @@ resource "random_password" "user_passwords" {
   min_special      = 1
 }
 
-# Bestehendes Glance-Image per Name laden (kein Packer-Build noetig).
+# Load the existing Glance image by name (no Packer build needed).
 data "openstack_images_image_v2" "image" {
   name        = var.image_name
   most_recent = true
 }
 
-# External network nur noetig, wenn Floating IP aktiviert ist.
+# External network only needed if floating IP is enabled.
 data "openstack_networking_network_v2" "external" {
   count = local.enable_floating_ip ? 1 : 0
   name  = var.floating_ip_pool
 }
 
 # -----------------------------------------------------------------------------
-# Netzwerk-Port explizit anlegen — so kennen wir die IPv6-Adresse VOR dem
-# VM-Start und koennen sie in user_data (cloudbase-init) einbetten.
+# Explicitly create the network port — this way we know the IPv6 address
+# BEFORE the VM starts and can embed it in user_data (cloudbase-init).
 # -----------------------------------------------------------------------------
 resource "openstack_networking_port_v2" "vm_port" {
   name               = "${local.app_name}-port"
@@ -115,11 +115,11 @@ resource "openstack_compute_instance_v2" "shared_vm" {
   flavor_name = var.flavor_name
   key_pair    = null
 
-  # Security Group wird bereits ueber vm_port.security_group_ids gesetzt
-  # (var.shared_secgroup_id, vom Deployer im Wizard ausgewaehlt). Kein
-  # zusaetzliches `security_groups` hier — das waere eine Namens-Referenz,
-  # die bei mehreren gleichnamigen Gruppen im Projekt mit einem 409
-  # "Multiple security_group matches found" bricht.
+  # Security group is already set via vm_port.security_group_ids
+  # (var.shared_secgroup_id, chosen by the deployer in the wizard). No
+  # additional `security_groups` here — that would be a name-based reference,
+  # which breaks with a 409 "Multiple security_group matches found" when
+  # multiple groups with the same name exist in the project.
 
   timeouts {
     create = "15m"
@@ -130,8 +130,8 @@ resource "openstack_compute_instance_v2" "shared_vm" {
     port = openstack_networking_port_v2.vm_port.id
   }
 
-  # Cloudbase-init fuehrt den PowerShell-Block beim ersten Boot aus:
-  # legt lokale Benutzer an und aktiviert RDP.
+  # Cloudbase-init runs the PowerShell block on first boot:
+  # creates local users and enables RDP.
   user_data = templatefile("${path.module}/cloudbase-init.txt.tpl", {
     all_users    = local.all_users
     passwords    = [for p in random_password.user_passwords : p.result]
@@ -147,7 +147,7 @@ resource "openstack_compute_instance_v2" "shared_vm" {
 }
 
 # -----------------------------------------------------------------------------
-# Optional Floating IP (eine fuer die gemeinsame VM)
+# Optional floating IP (one for the shared VM)
 # -----------------------------------------------------------------------------
 resource "openstack_networking_floatingip_v2" "fip" {
   count = local.enable_floating_ip ? 1 : 0

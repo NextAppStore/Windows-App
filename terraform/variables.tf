@@ -1,9 +1,9 @@
 ################################################
-# PFLICHT-Variablen (vom Worker injiziert)
+# REQUIRED variables (injected by the worker)
 ################################################
 
 variable "users" {
-  description = "Per-team roster — vom Worker injiziert. @platform:internal"
+  description = "Per-team roster — injected by the worker. @platform:internal"
   type = map(list(object({
     email = string
   })))
@@ -11,29 +11,29 @@ variable "users" {
 }
 
 variable "image_name" {
-  description = "Glance-Image-Name des bestehenden Windows-Images. @platform:internal"
+  description = "Glance image name of the existing Windows image. @platform:internal"
   type        = string
-  # Muss exakt dem Glance-Image-Namen entsprechen. Da diese App keinen
-  # Packer-Build hat, wird kein image_name vom Worker gesetzt — dieser
-  # Default ist der tatsaechlich verwendete Wert.
+  # Must exactly match the Glance image name. Since this app has no
+  # Packer build, the worker does not set image_name — this default
+  # is the actually used value.
   default = "Windows 11 25H2 (UEFI)"
 }
 
 ################################################
-# Konfigurierbare Variablen (im AppStore-Wizard)
+# Configurable variables (in the AppStore wizard)
 ################################################
 
 variable "flavor_name" {
-  description = "Flavor der Windows-VM @openstack:flavor:name"
+  description = "Flavor of the Windows VM @openstack:flavor:name"
   type        = string
   default     = "win11.medium"
 }
 
 variable "network_uuid" {
-  description = "Hauptnetzwerk @openstack:network:id"
+  description = "Primary network @openstack:network:id"
   type        = string
-  # TODO: Platzhalter (aus Ubuntu-App). Der Deployer waehlt das echte
-  # DHBWV6-Netzwerk im Wizard; fuer korrekte Defaults die echte UUID setzen.
+  # TODO: placeholder (from the Ubuntu app). The deployer selects the actual
+  # DHBWV6 network in the wizard; set the real UUID for correct defaults.
   default = "9b579624-d844-4df3-b38d-89978b31d37d"
 }
 
