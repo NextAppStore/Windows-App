@@ -17,8 +17,8 @@ cd terraform
 # 1. Deploy
 terraform apply -var='users={"team-a":[{"email":"user@dhbw.de"}]}'
 
-# 2. Get IPv6 address and password (wait ~5 min after apply)
-terraform output -json team_vms      # → fixed_ip_v6, rdp_target_v6
+# 2. Get IPv6 address and password (wait ~5-6 min after apply)
+terraform output -json team_vms      # → "team-a": { fixed_ip_v6, rdp_target_v6, ... }
 terraform output -json user_accounts # → auth (password)
 
 # 3. Connect via RDP
@@ -33,14 +33,15 @@ terraform destroy -var='users={"team-a":[{"email":"user@dhbw.de"}]}'
 
 ## 1. What this app does
 
-Deploys a shared **Windows 11 VM** on OpenStack. Each user gets a local Windows
-account with a randomly generated password and can connect via **RDP (port 3389)**.
+Deploys one **Windows 11 VM per team** on OpenStack. Each user gets a local
+Windows account on their team's VM with a randomly generated password and can
+connect via **RDP (port 3389)**.
 
 - No Packer build — uses the existing Glance image `Windows 11 25H2 (UEFI)` directly
-- One shared VM for all users (all teams land on the same machine)
+- One VM per team, shared by that team's members (`for_each` over teams, same pattern as `template-app`)
 - Deployer selects an existing security group with TCP 3389 inbound (IPv4 + IPv6) via `shared_secgroup_id` — the app does not create its own
-- cloudbase-init runs on first boot to create user accounts, enable RDP, and set IPv6
-- VM gets both an IPv4 (`10.200.x.x`) and IPv6 (`2001:7c0:...`) address
+- cloudbase-init runs on first boot to create user accounts, enable RDP, set IPv6, and install VS Code (system-wide, silent)
+- Each VM gets both an IPv4 (`10.200.x.x`) and IPv6 (`2001:7c0:...`) address
 
 ---
 
@@ -79,10 +80,13 @@ terraform apply -var='users={"test":[{"email":"test@dhbw.de"}]}'
 
 The dummy email only derives the username (`test@dhbw.de` → username `test`).
 
-Plan shows **3 resources to create**:
-- `random_password.user_passwords[0]`
-- `openstack_networking_port_v2.vm_port`
-- `openstack_compute_instance_v2.shared_vm`
+For a single team with one user, plan shows **3 resources to create**:
+- `random_password.user_passwords["test-test"]`
+- `openstack_networking_port_v2.team_port["test"]`
+- `openstack_compute_instance_v2.team_vm["test"]`
+
+All three now scale with the team count via `for_each` — e.g. two teams with
+one user each produce 2 passwords, 2 ports, and 2 instances.
 
 Pass an existing security group's ID via `-var='shared_secgroup_id=<uuid>'` (must allow inbound TCP 3389).
 
@@ -103,17 +107,22 @@ terraform destroy -var='users={"test":[{"email":"test@dhbw.de"}]}'
 
 ## 4. Connect via RDP
 
-**Wait 3–5 minutes** after `terraform apply` completes — cloudbase-init needs
-to finish creating users, enabling RDP, and setting the IPv6 address on first boot.
+**Wait 3–6 minutes** after `terraform apply` completes — cloudbase-init needs
+to finish creating users, enabling RDP, setting the IPv6 address, and
+installing VS Code on first boot.
 
 ### Via IPv6 — works from anywhere, no VPN needed
 
-The VM gets a statically configured IPv6 address on first boot. Get it:
+Each team's VM gets a statically configured IPv6 address on first boot. Get it
+(output is now keyed by team name):
 
 ```bash
 terraform output -json team_vms
-# → "fixed_ip_v6": "2001:7c0:1b20:c913:1::xxxx"
-# → "rdp_target_v6": "[2001:7c0:1b20:c913:1::xxxx]:3389"
+# → "team-a": {
+#      "fixed_ip_v6": "2001:7c0:1b20:c913:1::xxxx",
+#      "rdp_target_v6": "[2001:7c0:1b20:c913:1::xxxx]:3389",
+#      ...
+#    }
 ```
 
 **Microsoft Remote Desktop (macOS):**
@@ -204,6 +213,7 @@ This is reliable and does not depend on DHCPv6.
 | RDP times out / connection refused | `shared_secgroup_id` points at a group without a TCP 3389 inbound rule | Check `openstack security group rule list <secgroup_id>`; add/fix the rule or pass the correct group's ID |
 | RDP error `0x2407` (no permission) | User not in Remote Desktop Users group | See below |
 | IPv6 address not set | cloudbase-init log shows "Kein passender Netzwerkadapter" | Check log; set manually via console |
+| VS Code missing | Download failed (no outbound internet on first boot) or install step errored | Check log for "FEHLER bei VS Code Installation"; RDP/users still work — install manually via console if needed |
 
 ### Check the cloudbase-init log
 
@@ -223,6 +233,9 @@ Firewall-Gruppe @FirewallAPI.dll,-28752 (RDP) aktiviert
 Explizite Firewallregel AppStore-RDP-In-TCP angelegt
 Explizite Firewallregel AppStore-RDP-In-UDP angelegt
 TermService aktiviert und gestartet
+Lade VS Code Installer herunter...
+VS Code Installer heruntergeladen, starte stille Installation
+VS Code Installation abgeschlossen
 IPv6-Adresse statisch gesetzt: 2001:7c0:1b20:c913:1::xxxx/64 auf tapXXXXXX
 IPv6-Standardroute gesetzt: ::/0 via 2001:7c0:1b20:c913::1
 App-Setup abgeschlossen

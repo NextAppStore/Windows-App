@@ -18,18 +18,18 @@
 output "user_accounts" {
   description = "[CONTRACT] User accounts with RDP login information"
   sensitive   = true # Contains passwords
-  value = length(local.all_users) > 0 ? {
-    for i in range(length(local.all_users)) : local.user_ids[i] => {
+  value = {
+    for uid, user in local.users_map : uid => {
       type     = "password"
       authtype = "rdp"
-      ip       = local.enable_floating_ip ? openstack_networking_floatingip_v2.fip[0].address : openstack_compute_instance_v2.shared_vm.network[0].fixed_ip_v4
+      ip       = local.enable_floating_ip ? openstack_networking_floatingip_v2.team_fip[user.team].address : openstack_compute_instance_v2.team_vm[user.team].network[0].fixed_ip_v4
       port     = 3389
-      username = local.usernames[i]
-      auth     = random_password.user_passwords[i].result
-      email    = local.emails[i]
-      team     = local.all_users[i].team
+      username = user.username
+      auth     = random_password.user_passwords[uid].result
+      email    = user.email
+      team     = user.team
     }
-  } : {}
+  }
 }
 
 ############################
@@ -40,29 +40,32 @@ output "user_accounts" {
 # team_vms as a clickable link. `rdp_command`/`rdp_target` are therefore
 # purely informational — the actual credentials come from user_accounts.
 output "team_vms" {
-  description = "Details of the shared Windows VM and all users"
-  value = local.vm_count > 0 ? {
-    shared_vm = {
-      instance_id   = openstack_compute_instance_v2.shared_vm.id
-      instance_name = openstack_compute_instance_v2.shared_vm.name
-      fixed_ip      = openstack_compute_instance_v2.shared_vm.network[0].fixed_ip_v4
-      fixed_ip_v6   = local.fixed_ip_v6
-      floating_ip   = local.enable_floating_ip ? openstack_networking_floatingip_v2.fip[0].address : null
-      rdp_target    = "${local.enable_floating_ip ? openstack_networking_floatingip_v2.fip[0].address : openstack_compute_instance_v2.shared_vm.network[0].fixed_ip_v4}:3389"
-      rdp_target_v6 = "[${local.fixed_ip_v6}]:3389"
-      users = [for i in range(length(local.all_users)) : {
-        username    = local.usernames[i]
-        team        = local.all_users[i].team
-        rdp_command = "mstsc /v:${local.enable_floating_ip ? openstack_networking_floatingip_v2.fip[0].address : openstack_compute_instance_v2.shared_vm.network[0].fixed_ip_v4}"
-      }]
+  description = "Details of each team's Windows VM and its users"
+  value = {
+    for team in local.unique_teams : team => {
+      instance_id   = openstack_compute_instance_v2.team_vm[team].id
+      instance_name = openstack_compute_instance_v2.team_vm[team].name
+      fixed_ip      = openstack_compute_instance_v2.team_vm[team].network[0].fixed_ip_v4
+      fixed_ip_v6   = local.fixed_ip_v6[team]
+      floating_ip   = local.enable_floating_ip ? openstack_networking_floatingip_v2.team_fip[team].address : null
+      rdp_target    = "${local.enable_floating_ip ? openstack_networking_floatingip_v2.team_fip[team].address : openstack_compute_instance_v2.team_vm[team].network[0].fixed_ip_v4}:3389"
+      rdp_target_v6 = "[${local.fixed_ip_v6[team]}]:3389"
+      users = [
+        for uid, user in local.users_map : {
+          username    = user.username
+          team        = user.team
+          rdp_command = "mstsc /v:${local.enable_floating_ip ? openstack_networking_floatingip_v2.team_fip[team].address : openstack_compute_instance_v2.team_vm[team].network[0].fixed_ip_v4}"
+        }
+        if user.team == team
+      ]
     }
-  } : {}
+  }
 }
 
 output "teams_summary" {
   description = "Overview: number of VMs and users"
   value = {
-    vm_count   = local.vm_count
+    vm_count   = length(local.unique_teams)
     user_count = length(local.all_users)
     usernames  = local.usernames
     emails     = local.emails

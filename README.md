@@ -10,11 +10,13 @@ entfällt die Build-Phase; deployt wird direkt per Terraform.
 
 ## Was macht diese App?
 
-Es wird **eine einzelne Windows-11-VM** gestartet, die sich **alle Nutzer teilen**.
-Jeder Nutzer bekommt seinen eigenen lokalen Windows-Account (eigener Benutzername,
-eigenes Passwort) — aber alle arbeiten auf derselben Maschine. Das spart Ressourcen
-und ist für Lehr-Szenarien gedacht, bei denen alle Teilnehmer die gleiche Umgebung
-brauchen (z. B. eine Software ausprobieren, eine Übung durchführen).
+Pro Team wird **eine eigene Windows-11-VM** gestartet, die sich die Mitglieder
+dieses Teams teilen. Jeder Nutzer bekommt seinen eigenen lokalen Windows-Account
+(eigener Benutzername, eigenes Passwort) — Teammitglieder arbeiten auf derselben
+Maschine, verschiedene Teams bekommen getrennte VMs. Die Gruppeneinteilung im
+Deployment-Wizard (eine Gruppe / jeder Nutzer einzeln / individuell) bestimmt
+damit direkt, wie viele VMs entstehen und wer sich eine Maschine teilt — genau
+wie bei `template-app`.
 
 Der Zugriff erfolgt per **Remote Desktop (RDP)**: Nutzer verbinden sich mit einem
 RDP-Client (z. B. Microsoft Remote Desktop auf macOS) und sehen einen vollständigen
@@ -24,10 +26,17 @@ Windows-Desktop.
 
 - **Ein Windows-Account pro Nutzer**, abgeleitet aus der E-Mail-Adresse
   (z. B. `erik.mueller@dhbw.de` → Benutzername `erikmueller`)
-- Alle Nutzer aller Teams landen auf **einer gemeinsamen VM**
+- Nutzer landen auf der VM ihres Teams — **eine VM pro Team**, geteilt von
+  dessen Mitgliedern
 - Jeder Nutzer erhält ein automatisch generiertes, zufälliges Passwort
 - Login per **RDP** (Port 3389) mit Benutzername + Passwort
 - Nutzer sind **Standard-User** (kein lokaler Administrator)
+
+## Software
+
+- **Visual Studio Code** wird auf jeder VM beim ersten Boot maschinenweit
+  installiert (System-Installer, stille Installation via cloudbase-init) —
+  steht damit allen lokalen Accounts auf dieser VM zur Verfügung.
 
 ## VM-Zugang
 
@@ -41,8 +50,8 @@ Windows-Desktop.
 
 | | |
 |---|---|
-| VMs gesamt | **1** (geteilt von allen Teams und Nutzern) |
-| VMs pro Team | — |
+| VMs gesamt | **1 pro Team** |
+| VMs pro Team | **1** (geteilt von allen Team-Mitgliedern) |
 | VMs pro Nutzer | — |
 | Image | `Windows 11 25H2 (UEFI)` (bestehendes Glance-Image) |
 | Flavor | `win11.medium` (8 GB RAM, 2 vCPU, 80 GB) |
@@ -64,11 +73,12 @@ Windows-Desktop.
 |---|---|
 | Packer Image Build | — (kein Packer) |
 | Terraform apply | 3–5 min |
-| Windows-Erststart + cloudbase-init | 2–5 min |
-| **Gesamt** | **5–10 min** |
+| Windows-Erststart + cloudbase-init (inkl. VS-Code-Installation) | 3–6 min |
+| **Gesamt** | **6–11 min** |
 
 > Hinweis: Nach `terraform apply` braucht Windows beim ersten Boot noch etwas
-> Zeit, bis cloudbase-init die Benutzer angelegt und RDP aktiviert hat.
+> Zeit, bis cloudbase-init die Benutzer angelegt, RDP aktiviert und VS Code
+> installiert hat.
 
 ## Technische Hinweise
 

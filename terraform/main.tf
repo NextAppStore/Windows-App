@@ -52,19 +52,20 @@ locals {
 
   unique_teams = distinct([for user in local.all_users : user.team])
 
-  # One shared VM for all users
-  vm_count = 1
+  users_map = { for user in local.all_users : user.id => user }
 
   usernames = [for user in local.all_users : user.username]
   emails    = [for user in local.all_users : user.email]
   user_ids  = [for user in local.all_users : user.id]
 
-  # Read the IPv6 address from the explicitly created port.
+  # Read the IPv6 address from each team's explicitly created port.
   # We filter by the IPv6 subnet so ordering doesn't matter.
-  fixed_ip_v6 = try([
-    for fa in openstack_networking_port_v2.vm_port.all_fixed_ips :
-    fa if can(regex(":", fa))
-  ][0], "")
+  fixed_ip_v6 = {
+    for team in local.unique_teams : team => try([
+      for fa in openstack_networking_port_v2.team_port[team].all_fixed_ips :
+      fa if can(regex(":", fa))
+    ][0], "")
+  }
 
   # IPv6 gateway of the DHBWV6 subnet (fixed; does not change)
   ipv6_gateway = "2001:7c0:1b20:c913::1"
@@ -73,7 +74,7 @@ locals {
 # One password per user. override_special is restricted to characters that
 # are safe in PowerShell interpolation and RDP (no $, `, ", ').
 resource "random_password" "user_passwords" {
-  count            = length(local.all_users)
+  for_each         = local.users_map
   length           = 16
   special          = true
   override_special = "!@#%^*_-+="
@@ -96,26 +97,30 @@ data "openstack_networking_network_v2" "external" {
 }
 
 # -----------------------------------------------------------------------------
-# Explicitly create the network port — this way we know the IPv6 address
-# BEFORE the VM starts and can embed it in user_data (cloudbase-init).
+# Explicitly create one network port per team — this way we know each team's
+# IPv6 address BEFORE its VM starts and can embed it in user_data
+# (cloudbase-init).
 # -----------------------------------------------------------------------------
-resource "openstack_networking_port_v2" "vm_port" {
-  name               = "${local.app_name}-port"
+resource "openstack_networking_port_v2" "team_port" {
+  for_each           = toset(local.unique_teams)
+  name               = "${local.app_name}-${each.key}-port"
   network_id         = var.network_uuid
   security_group_ids = [var.shared_secgroup_id]
   admin_state_up     = true
 }
 
 # -----------------------------------------------------------------------------
-# Shared Windows VM
+# One Windows VM per team, shared by that team's members
 # -----------------------------------------------------------------------------
-resource "openstack_compute_instance_v2" "shared_vm" {
-  name        = "${local.app_name}-shared"
+resource "openstack_compute_instance_v2" "team_vm" {
+  for_each = toset(local.unique_teams)
+
+  name        = "${local.app_name}-${each.key}"
   image_id    = data.openstack_images_image_v2.image.id
   flavor_name = var.flavor_name
   key_pair    = null
 
-  # Security group is already set via vm_port.security_group_ids
+  # Security group is already set via team_port.security_group_ids
   # (var.shared_secgroup_id, chosen by the deployer in the wizard). No
   # additional `security_groups` here — that would be a name-based reference,
   # which breaks with a 409 "Multiple security_group matches found" when
@@ -127,37 +132,44 @@ resource "openstack_compute_instance_v2" "shared_vm" {
   }
 
   network {
-    port = openstack_networking_port_v2.vm_port.id
+    port = openstack_networking_port_v2.team_port[each.key].id
   }
 
-  # Cloudbase-init runs the PowerShell block on first boot:
-  # creates local users and enables RDP.
+  # Cloudbase-init runs the PowerShell block on first boot: creates this
+  # team's local users, enables RDP, binds the static IPv6 address, and
+  # installs VS Code.
   user_data = templatefile("${path.module}/cloudbase-init.txt.tpl", {
-    all_users    = local.all_users
-    passwords    = [for p in random_password.user_passwords : p.result]
-    ipv6_address = local.fixed_ip_v6
+    team_users = [
+      for uid, user in local.users_map : {
+        username = user.username
+        email    = user.email
+        password = random_password.user_passwords[uid].result
+      }
+      if user.team == each.key
+    ]
+    ipv6_address = local.fixed_ip_v6[each.key]
     ipv6_gateway = local.ipv6_gateway
   })
 
   metadata = merge(local.metadata, {
-    teams  = join(",", local.unique_teams)
-    users  = join(",", local.usernames)
-    emails = join(",", local.emails)
+    team = each.key
+    app  = local.app_name
   })
 }
 
 # -----------------------------------------------------------------------------
-# Optional floating IP (one for the shared VM)
+# Optional floating IPs (one per team VM)
 # -----------------------------------------------------------------------------
-resource "openstack_networking_floatingip_v2" "fip" {
-  count = local.enable_floating_ip ? 1 : 0
-  pool  = data.openstack_networking_network_v2.external[0].name
+resource "openstack_networking_floatingip_v2" "team_fip" {
+  for_each = local.enable_floating_ip ? toset(local.unique_teams) : toset([])
+  pool     = data.openstack_networking_network_v2.external[0].name
 }
 
-resource "openstack_networking_floatingip_associate_v2" "fip_assoc" {
-  count       = local.enable_floating_ip ? 1 : 0
-  floating_ip = openstack_networking_floatingip_v2.fip[0].address
-  port_id     = openstack_compute_instance_v2.shared_vm.network[0].port
+resource "openstack_networking_floatingip_associate_v2" "team_fip_assoc" {
+  for_each = local.enable_floating_ip ? toset(local.unique_teams) : toset([])
 
-  depends_on = [openstack_compute_instance_v2.shared_vm]
+  floating_ip = openstack_networking_floatingip_v2.team_fip[each.key].address
+  port_id     = openstack_networking_port_v2.team_port[each.key].id
+
+  depends_on = [openstack_compute_instance_v2.team_vm]
 }
