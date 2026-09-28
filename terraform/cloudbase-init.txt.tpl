@@ -119,10 +119,17 @@ try {
         Log "WARNUNG: Kein passender Netzwerkadapter gefunden"
     }
 
-    # Status dump for verification
+    # Status dump for verification. Deliberately not Format-Table -AutoSize:
+    # it queries the console's window width to size columns, which throws
+    # under cloudbase-init's NonInteractive PowerShell host (no real
+    # console) — caught below and logged as a misleading FEHLER even though
+    # the address/route above were already set successfully.
     $all6 = Get-NetIPAddress -AddressFamily IPv6 -ErrorAction SilentlyContinue |
         Select-Object InterfaceAlias, IPAddress, PrefixOrigin, SuffixOrigin, AddressState
-    Log ("Get-NetIPAddress IPv6:`n" + ($all6 | Format-Table -AutoSize | Out-String))
+    $all6Lines = $all6 | ForEach-Object {
+        "$($_.InterfaceAlias) $($_.IPAddress) $($_.PrefixOrigin) $($_.SuffixOrigin) $($_.AddressState)"
+    }
+    Log ("Get-NetIPAddress IPv6:`n" + ($all6Lines -join "`n"))
 } catch { Log "FEHLER bei IPv6-Konfiguration: $_" }
 
 Log "App-Setup abgeschlossen"
