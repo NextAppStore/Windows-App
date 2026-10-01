@@ -9,9 +9,9 @@ function Log($m) { Add-Content -Path $log -Value "$(Get-Date -Format o)  $m" }
 Log "Starte App-Setup: Benutzer anlegen + RDP aktivieren + IPv6 binden"
 
 # --- Create local users ---------------------------------------------------
-%{ for idx, user in all_users ~}
+%{ for user in team_users ~}
 try {
-    $pw = ConvertTo-SecureString '${passwords[idx]}' -AsPlainText -Force
+    $pw = ConvertTo-SecureString '${user.password}' -AsPlainText -Force
     if (Get-LocalUser -Name '${user.username}' -ErrorAction SilentlyContinue) {
         Set-LocalUser -Name '${user.username}' -Password $pw
         Log "Benutzer '${user.username}' existierte, Passwort gesetzt"
@@ -61,6 +61,28 @@ try {
     Log "FEHLER bei RDP-Aktivierung: $_"
 }
 
+# --- Install Visual Studio Code (system-wide, silent) ----------------------
+# Uses the win32-x64 SYSTEM installer (no "-user" suffix) — installs to
+# Program Files and works correctly when run as SYSTEM during cloudbase-init,
+# before any user profile exists. Note: $env:ProgramFiles / $env:TEMP must
+# stay brace-free here — dollar-brace syntax belongs to Terraform's own
+# templatefile interpolation and would be parsed by Terraform, not PowerShell.
+try {
+    $vscodeExe = "$env:ProgramFiles\Microsoft VS Code\Code.exe"
+    if (Test-Path $vscodeExe) {
+        Log "VS Code bereits installiert, ueberspringe Installation"
+    } else {
+        $installer = "$env:TEMP\vscode-setup.exe"
+        Log "Lade VS Code Installer herunter..."
+        Invoke-WebRequest -Uri "https://update.code.visualstudio.com/latest/win32-x64/stable" -OutFile $installer -UseBasicParsing
+        Log "VS Code Installer heruntergeladen, starte stille Installation"
+        Start-Process -FilePath $installer -ArgumentList "/VERYSILENT", "/NORESTART", "/MERGETASKS=!runcode" -Wait -NoNewWindow
+        Log "VS Code Installation abgeschlossen"
+    }
+} catch {
+    Log "FEHLER bei VS Code Installation: $_"
+}
+
 # --- Set IPv6 statically (DHCPv6-stateful is not answered by the DHBW server) ---
 # The address is provided by Neutron/Terraform and written statically to the
 # adapter here. This is more reliable than DHCPv6 on Windows.
@@ -97,10 +119,17 @@ try {
         Log "WARNUNG: Kein passender Netzwerkadapter gefunden"
     }
 
-    # Status dump for verification
+    # Status dump for verification. Deliberately not Format-Table -AutoSize:
+    # it queries the console's window width to size columns, which throws
+    # under cloudbase-init's NonInteractive PowerShell host (no real
+    # console) — caught below and logged as a misleading FEHLER even though
+    # the address/route above were already set successfully.
     $all6 = Get-NetIPAddress -AddressFamily IPv6 -ErrorAction SilentlyContinue |
         Select-Object InterfaceAlias, IPAddress, PrefixOrigin, SuffixOrigin, AddressState
-    Log ("Get-NetIPAddress IPv6:`n" + ($all6 | Format-Table -AutoSize | Out-String))
+    $all6Lines = $all6 | ForEach-Object {
+        "$($_.InterfaceAlias) $($_.IPAddress) $($_.PrefixOrigin) $($_.SuffixOrigin) $($_.AddressState)"
+    }
+    Log ("Get-NetIPAddress IPv6:`n" + ($all6Lines -join "`n"))
 } catch { Log "FEHLER bei IPv6-Konfiguration: $_" }
 
 Log "App-Setup abgeschlossen"
