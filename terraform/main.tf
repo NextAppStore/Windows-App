@@ -56,7 +56,6 @@ locals {
 
   usernames = [for user in local.all_users : user.username]
   emails    = [for user in local.all_users : user.email]
-  user_ids  = [for user in local.all_users : user.id]
 
   # Read the IPv6 address from each team's explicitly created port.
   # We filter by the IPv6 subnet so ordering doesn't matter.
