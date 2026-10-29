@@ -46,5 +46,6 @@ variable "floating_ip_pool" {
 variable "shared_secgroup_id" {
   description = "ID einer Security Group mit RDP-Freigabe (Port 3389, IPv4 + IPv6) @openstack:security_group:id"
   type        = string
-  default     = "2b37d6a2-dd64-4ce1-9f4a-c6cc92e0d8ef"
+  # "windows-rdp-rdp" — TCP 3389 inbound, IPv4 + IPv6.
+  default = "2cf25844-d2d6-4d51-b6a8-ac487e257d47"
 }
